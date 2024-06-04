@@ -1,59 +1,34 @@
 package main
 
 import (
-	"crypto/hmac"
-	"crypto/sha1"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"time"
 
+	"upload-bucket/conf"
 	"upload-bucket/upload"
 )
 
-// 七牛云配置信息
-const (
-	AccessKey = "_k6nwy23UG9PHBabmkfVn47wROJNry-cRx-pelKr"
-	SecretKey = "Bb3665vtPrCYh7NvA7aPYyGbdYfsXZAkJ6oyNgMz"
-	Bucket    = "zjf-db1"
-)
-
-// 上传凭证结构体
-type PutPolicy struct {
-	Scope      string `json:"scope"`
-	Deadline   int64  `json:"deadline"`
-	ReturnBody string `json:"returnBody"`
-}
-
-// 生成上传凭证
-func generateUploadToken() string {
-	putPolicy := PutPolicy{
-		Scope:    Bucket,
-		Deadline: time.Now().Unix() + 3600,
-	}
-	putPolicyJson, _ := json.Marshal(putPolicy)
-	encodedPutPolicy := base64.URLEncoding.EncodeToString(putPolicyJson)
-
-	h := hmac.New(sha1.New, []byte(SecretKey))
-	h.Write([]byte(encodedPutPolicy))
-	sign := base64.URLEncoding.EncodeToString(h.Sum(nil))
-
-	return AccessKey + ":" + sign + ":" + encodedPutPolicy
-}
-
-
-
 func main() {
-	uploadToken := generateUploadToken()
-	fmt.Println("Upload Token:", uploadToken)
+	fmt.Println("Upload Token:", conf.UploadToken)
 
-	filePath := "D:/goproject/src/upload-bucket/2.txt"
-	key := "txt2"
+	//filePath := "D:/goproject/src/upload-bucket/2.txt"
 
-	response, err := upload.UploadFileSliceV1(uploadToken, filePath, key)
+	/*filePath1 := "/Users/junfengzhou/Desktop/1.jpg"
+	key1:= "jpg1"
+
+	response1, err := upload.UploadFileFormData(uploadToken, filePath1, key1)
 	if err != nil {
 		fmt.Println("Error uploading file:", err)
 	} else {
-		fmt.Println("Upload response:", response)
+		fmt.Println("Upload response:", response1)
+	}*/
+
+	filePath2 := "/Users/junfengzhou/Desktop/2.jpg"
+	key2:= "jpg2"
+
+	response2, err := upload.UploadFileSliceV1(conf.UploadToken, filePath2, key2)
+	if err != nil {
+		fmt.Println("Error uploading file:", err)
+	} else {
+		fmt.Println("Upload response:", response2)
 	}
 }
