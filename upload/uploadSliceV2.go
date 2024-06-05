@@ -1,16 +1,16 @@
 package upload
 
-import (
+/*import (
 	"bytes"
 	"crypto/md5"
 	"encoding/base64"
-	"encoding/hex"
+	//"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
+	//"strconv"
 )
 
 const (
@@ -184,16 +184,16 @@ func signRequest(accessKey, secretKey string, req *http.Request) string {
 }
 
 func hmacSha1(key, data []byte) []byte {
-	h := hmac.New(md5.New, key)
+	//h := hmac.New(md5.New, key)
 	h.Write(data)
 	return h.Sum(nil)
 }
 
 func encodeJSON(data interface{}) io.Reader {
-	b, _ := json.Marshal(data)
+	//b, _ := json.Marshal(data)
 	return bytes.NewReader(b)
 }
 
 func decodeJSON(r io.Reader, v interface{}) error {
-	return json.NewDecoder(r).Decode(v)
-}
+//	return json.NewDecoder(r).Decode(v)
+}*/

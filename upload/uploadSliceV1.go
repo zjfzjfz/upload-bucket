@@ -1,120 +1,164 @@
 package upload
 
 import (
-	"bytes"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"strconv"
+    "bytes"
+    "encoding/base64"
+    "encoding/json"
+    "fmt"
+    "io"
 	"strings"
+    "net/http"
+    "os"
 )
 
-// 分片上传响应结构体
-type BlockResponse struct {
-	Ctx       string `json:"ctx"`
-	Checksum  string `json:"checksum"`
-	Offset    int    `json:"offset"`
-	Host      string `json:"host"`
-	Crc32     int    `json:"crc32"`
-	Error     string `json:"error"`
-	Code      int    `json:"code"`
-	BlockSize int    `json:"blockSize"`
+const (
+    UpHost        = "https://upload.qiniup.com"
+    ChunkSize     = 4 * 1024 * 1024 // 4MB
+    PartSize      = 1024 * 1024            // 每个片的大小
+)
+
+// mkblk 创建块
+func mkblk(uploadToken string, blockSize int, firstChunk []byte) (string, error) {
+    url := fmt.Sprintf("%s/mkblk/%d", UpHost, blockSize)
+    req, err := http.NewRequest("POST", url, bytes.NewReader(firstChunk))
+    if err != nil {
+        return "", err
+    }
+
+    req.Header.Set("Authorization", "UpToken "+uploadToken)
+    req.Header.Set("Content-Type", "application/octet-stream")
+    req.Header.Set("Content-Length", fmt.Sprintf("%d", len(firstChunk)))
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
+
+    var respData struct {
+        Ctx string `json:"ctx"`
+    }
+    if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+        return "", err
+    }
+
+    return respData.Ctx, nil
 }
 
-// 分片上传文件
+// bput 上传片
+func bput(uploadToken string, ctx string, offset int, chunk []byte) (string, error) {
+    url := fmt.Sprintf("%s/bput/%s/%d", UpHost, ctx, offset)
+    req, err := http.NewRequest("POST", url, bytes.NewReader(chunk))
+    if err != nil {
+        return "", err
+    }
+
+    req.Header.Set("Authorization", "UpToken "+uploadToken)
+    req.Header.Set("Content-Type", "application/octet-stream")
+    req.Header.Set("Content-Length", fmt.Sprintf("%d", len(chunk)))
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
+
+    var respData struct {
+        Ctx string `json:"ctx"`
+    }
+    if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
+        return "", err
+    }
+
+    return respData.Ctx, nil
+}
+
+// mkfile 创建文件
+func mkfile(uploadToken string, fileSize int64, key string, ctxs []string) error {
+    url := fmt.Sprintf("%s/mkfile/%d/key/%s", UpHost, fileSize, base64.URLEncoding.EncodeToString([]byte(key)))
+    req, err := http.NewRequest("POST", url, bytes.NewReader([]byte(strings.Join(ctxs, ","))))
+    if err != nil {
+        return err
+    }
+
+    req.Header.Set("Authorization", "UpToken "+uploadToken)
+    req.Header.Set("Content-Type", "text/plain")
+    req.Header.Set("Content-Length", fmt.Sprintf("%d", len(strings.Join(ctxs, ","))))
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != 200 {
+        return fmt.Errorf("mkfile failed with status code: %d", resp.StatusCode)
+    }
+
+    return nil
+}
+
+// UploadFileSliceV1 分片上传文件
 func UploadFileSliceV1(uploadToken, filePath, key string) (string, error) {
-	const chunkSize = 4 * 1024 * 1024 // 4MB
-	file, err := os.Open(filePath)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
+    file, err := os.Open(filePath)
+    if err != nil {
+        return "", err
+    }
+    defer file.Close()
 
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return "", err
-	}
-	fileSize := fileInfo.Size()
-	blockCount := (fileSize + chunkSize - 1) / chunkSize
+    fileInfo, err := file.Stat()
+    if err != nil {
+        return "", err
+    }
+    fileSize := fileInfo.Size()
 
-	var blockCtxs []string
-	for i := 0; i < int(blockCount); i++ {
-		blockSize := chunkSize
-		if i == int(blockCount)-1 && fileSize%chunkSize != 0 {
-			blockSize = int(fileSize % chunkSize)
-		}
-		buf := make([]byte, blockSize)
-		n, err := file.Read(buf)
-		if err != nil && err != io.EOF {
-			return "", err
-		}
-		if n != blockSize {
-			return "", fmt.Errorf("read block %d: expected %d bytes, got %d bytes", i, blockSize, n)
-		}
+    var lastCtxs []string
 
-		blockCtx, err := uploadBlock(uploadToken, buf)
-		if err != nil {
-			return "", fmt.Errorf("upload block failed: %v", err)
-		}
-		blockCtxs = append(blockCtxs, blockCtx)
-	}
+    for {
+        // 读取块
+        chunk := make([]byte, ChunkSize)
+        readSize, err := file.Read(chunk)
+        if err != nil && err != io.EOF {
+            return "", err
+        }
+        if readSize == 0 {
+            break
+        }
+        chunk = chunk[:readSize]
 
-	return makeFile(uploadToken, key, fileSize, blockCtxs)
-}
+        // 创建块
+        ctx, err := mkblk(uploadToken, readSize, chunk[:PartSize])
+        if err != nil {
+            return "", err
+        }
 
-// 上传块
-func uploadBlock(uploadToken string, blockData []byte) (string, error) {
-	url := "https://upload.qiniup.com/mkblk/" + strconv.Itoa(len(blockData))
-	request, err := http.NewRequest("POST", url, bytes.NewReader(blockData))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %v", err)
-	}
-	request.Header.Add("Authorization", "UpToken "+uploadToken)
-	request.Header.Add("Content-Type", "application/octet-stream")
+        // 上传剩余的片
+        for offset := PartSize; offset < readSize; offset += PartSize {
+            end := offset + PartSize
+            if end > readSize {
+                end = readSize
+            }
+            nextCtx, err := bput(uploadToken, ctx, offset, chunk[offset:end])
+            if err != nil {
+                return "", err
+            }
+            ctx = nextCtx
+        }
 
-	client := &http.Client{}
-	response, err := client.Do(request)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %v", err)
-	}
-	defer response.Body.Close()
+        lastCtxs = append(lastCtxs, ctx)
 
-	var blockResponse BlockResponse
-	err = json.NewDecoder(response.Body).Decode(&blockResponse)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode response: %v", err)
-	}
-	if blockResponse.Code != 200 {
-		return "", fmt.Errorf("upload block failed: %s (code: %d)", blockResponse.Error, blockResponse.Code)
-	}
+        if readSize < ChunkSize {
+            break
+        }
+    }
 
-	return blockResponse.Ctx, nil
-}
+    // 创建文件
+    if err := mkfile(uploadToken, fileSize, key, lastCtxs); err != nil {
+        return "", err
+    }
 
-// 创建文件
-func makeFile(uploadToken, key string, fileSize int64, blockCtxs []string) (string, error) {
-	url := "https://upload.qiniup.com/mkfile/" + strconv.FormatInt(fileSize, 10) + "/key/" + base64.URLEncoding.EncodeToString([]byte(key))
-	request, err := http.NewRequest("POST", url, bytes.NewReader([]byte(strings.Join(blockCtxs, ","))))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %v", err)
-	}
-	request.Header.Add("Authorization", "UpToken "+uploadToken)
-	request.Header.Add("Content-Type", "text/plain")
-
-	client := &http.Client{}
-	response, err := client.Do(request)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %v", err)
-	}
-	defer response.Body.Close()
-
-	respBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %v", err)
-	}
-
-	return string(respBody), nil
+    return "上传成功", nil
 }
