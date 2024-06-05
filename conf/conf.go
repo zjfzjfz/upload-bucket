@@ -12,7 +12,7 @@ import (
 // 七牛云配置信息
 const (
 	AccessKey = "_k6nwy23UG9PHBabmkfVn47wROJNry-cRx-pelKr"
-	SecretKey = "Bb3665vtPrCYh7NvA7aPYyGbdYfsXZAkJ6oyNgMz"
+	SecretKey = "" //配置SK
 	Bucket    = "zjf-db1"
 )
 
