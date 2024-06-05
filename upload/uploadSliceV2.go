@@ -11,20 +11,20 @@ import (
     "strconv"
 )
 
-// UploadInitResponse 结构体用来解析初始化上传的响应
+// 解析初始化上传的响应
 type UploadInitResponse struct {
     UploadID string `json:"uploadId"`
 }
 
-// UploadPartResponse 结构体用来解析每个分片上传后的响应
+// 解析每个分片上传后的响应
 type UploadPartResponse struct {
     Etag       string `json:"etag"`
     PartNumber int    `json:"partNumber"`
 }
 
-// UploadFileSliceV2 函数，使用七牛云的分片上传
+// V2分片上传
 func UploadFileSliceV2(uploadToken, filePath, key string) (string, error) {
-    // 分片大小，例如5MB
+    // 分片大小
     chunkSize := 5 * 1024 * 1024
 
     // 打开文件
@@ -42,8 +42,8 @@ func UploadFileSliceV2(uploadToken, filePath, key string) (string, error) {
     fileSize := fileInfo.Size()
 
     // 初始化 multipart 上传
-    initURL := fmt.Sprintf("/buckets/<BucketName>/objects/%s/uploads", base64.URLEncoding.EncodeToString([]byte(key)))
-    upHost := "<UpHost>"
+    initURL := fmt.Sprintf("/buckets/zjf-db1/objects/%s/uploads", base64.URLEncoding.EncodeToString([]byte(key)))
+    upHost := "upload.qiniup.com"
     resp, err := http.Post(initURL, "application/json", nil)
     if err != nil {
         return "", err
@@ -56,7 +56,7 @@ func UploadFileSliceV2(uploadToken, filePath, key string) (string, error) {
     uploadID := initResp.UploadID
 
     // 分片上传
-    partURL := fmt.Sprintf("/buckets/<BucketName>/objects/%s/uploads/%s/", base64.URLEncoding.EncodeToString([]byte(key)), uploadID)
+    partURL := fmt.Sprintf("/buckets/zjf-db1/objects/%s/uploads/%s/", base64.URLEncoding.EncodeToString([]byte(key)), uploadID)
 
     var uploadedParts []UploadPartResponse
 
@@ -113,7 +113,6 @@ func UploadFileSliceV2(uploadToken, filePath, key string) (string, error) {
         "parts":   uploadedParts,
         "fname":   fileInfo.Name(),
         "mimeType": "application/octet-stream",
-        // 此处添加其他metadata和自定义变量
     }
     completeBuffer := &bytes.Buffer{}
     json.NewEncoder(completeBuffer).Encode(completeData)
@@ -137,7 +136,7 @@ func UploadFileSliceV2(uploadToken, filePath, key string) (string, error) {
         return "", fmt.Errorf("bad status: %s", resp.Status)
     }
 
-    // 返回最终上传响应的ETag（可以是其他有用的响应）
+    // 返回最终上传响应的ETag
     var finalResponse map[string]interface{}
     if err := json.NewDecoder(resp.Body).Decode(&finalResponse); err != nil {
         return "", err
@@ -149,11 +148,4 @@ func UploadFileSliceV2(uploadToken, filePath, key string) (string, error) {
     }
 
     return etag, nil
-}
-
-func min(a, b int64) int64 {
-    if a < b {
-        return a
-	}
-	return b
 }
