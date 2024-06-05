@@ -14,7 +14,7 @@ import (
 const (
     UpHost        = "https://upload.qiniup.com"
     ChunkSize     = 4 * 1024 * 1024 // 4MB
-    PartSize      = 1024 * 1024            // 每个片的大小
+    PartSize      = 256 * 1024            // 每个片的大小
 )
 
 // mkblk 创建块
