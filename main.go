@@ -20,7 +20,7 @@ func main() {
 		fmt.Println("Error uploading file:", err)
 	} else {
 		fmt.Println("Upload response:", response1)
-	}*/
+	}
 
 	filePath2 := "/Users/junfengzhou/Desktop/5.pdf"
 	key2:= "pdf5"
@@ -30,5 +30,15 @@ func main() {
 		fmt.Println("Error uploading file:", err)
 	} else {
 		fmt.Println("Upload response:", response2)
+	}*/
+
+	filePath3 := "/Users/junfengzhou/Desktop/6.pdf"
+	key3:= "pdf6"
+
+	response3, err := upload.UploadFileSliceV1(conf.UploadToken, filePath3, key3)
+	if err != nil {
+		fmt.Println("Error uploading file:", err)
+	} else {
+		fmt.Println("Upload response:", response3)
 	}
 }

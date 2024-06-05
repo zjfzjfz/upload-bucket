@@ -1,199 +1,159 @@
 package upload
 
-/*import (
-	"bytes"
-	"crypto/md5"
-	"encoding/base64"
-	//"encoding/hex"
-	"fmt"
-	"io"
-	"log"
-	"net/http"
-	"os"
-	//"strconv"
+import (
+    "bytes"
+    "crypto/md5"
+    "encoding/base64"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "os"
+    "strconv"
 )
 
-const (
-	uploadURL = "https://upload.qiniup.com"
-	chunkSize = 4 * 1024 * 1024 // 4MB
-)
-
-func main() {
-	accessKey := "<Your Access Key>"
-	secretKey := "<Your Secret Key>"
-	bucket := "<Your Bucket Name>"
-	key := "<Your File Key>"
-
-	filePath := "<Your File Path>"
-	file, err := os.Open(filePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	fileInfo, _ := file.Stat()
-	fileSize := fileInfo.Size()
-	fileName := fileInfo.Name()
-
-	uploadID, err := initiateMultipartUpload(accessKey, secretKey, bucket, key)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	chunkCount := int(fileSize/chunkSize) + 1
-	var etags []string
-
-	for i := 0; i < chunkCount; i++ {
-		partNumber := i + 1
-		offset := int64(i * chunkSize)
-		chunkSize := int64(chunkSize)
-		chunkData := make([]byte, chunkSize)
-
-		n, err := file.ReadAt(chunkData, offset)
-		if err != nil && err != io.EOF {
-			log.Fatal(err)
-		}
-
-		chunkData = chunkData[:n]
-		etag, err := uploadChunk(accessKey, secretKey, bucket, key, uploadID, partNumber, chunkData)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		etags = append(etags, etag)
-	}
-
-	err = completeMultipartUpload(accessKey, secretKey, bucket, key, uploadID, etags)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("File uploaded successfully:", fileName)
+// UploadInitResponse 结构体用来解析初始化上传的响应
+type UploadInitResponse struct {
+    UploadID string `json:"uploadId"`
 }
 
-func initiateMultipartUpload(accessKey, secretKey, bucket, key string) (string, error) {
-	url := fmt.Sprintf("%s/v2/multipart/upload/%s", uploadURL, base64.URLEncoding.EncodeToString([]byte(bucket+"/"+key)))
-
-	req, err := http.NewRequest("POST", url, nil)
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Authorization", "Qiniu "+signRequest(accessKey, secretKey, req))
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		UploadID string `json:"uploadId"`
-	}
-
-	err = decodeJSON(resp.Body, &result)
-	if err != nil {
-		return "", err
-	}
-
-	return result.UploadID, nil
+// UploadPartResponse 结构体用来解析每个分片上传后的响应
+type UploadPartResponse struct {
+    Etag       string `json:"etag"`
+    PartNumber int    `json:"partNumber"`
 }
 
-func uploadChunk(accessKey, secretKey, bucket, key, uploadID string, partNumber int, chunkData []byte) (string, error) {
-	url := fmt.Sprintf("%s/v2/multipart/upload/%s/%d", uploadURL, uploadID, partNumber)
+// UploadFileSliceV2 函数，使用七牛云的分片上传
+func UploadFileSliceV2(uploadToken, filePath, key string) (string, error) {
+    // 分片大小，例如5MB
+    chunkSize := 5 * 1024 * 1024
 
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(chunkData))
-	if err != nil {
-		return "", err
-	}
+    // 打开文件
+    file, err := os.Open(filePath)
+    if err != nil {
+        return "", err
+    }
+    defer file.Close()
 
-	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("Authorization", "Qiniu "+signRequest(accessKey, secretKey, req))
+    // 获取文件的大小
+    fileInfo, err := file.Stat()
+    if err != nil {
+        return "", err
+    }
+    fileSize := fileInfo.Size()
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
+    // 初始化 multipart 上传
+    initURL := fmt.Sprintf("/buckets/<BucketName>/objects/%s/uploads", base64.URLEncoding.EncodeToString([]byte(key)))
+    upHost := "<UpHost>"
+    resp, err := http.Post(initURL, "application/json", nil)
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
+    var initResp UploadInitResponse
+    if err := json.NewDecoder(resp.Body).Decode(&initResp); err != nil {
+        return "", err
+    }
+    uploadID := initResp.UploadID
 
-	etag := resp.Header.Get("Etag")
-	return etag, nil
+    // 分片上传
+    partURL := fmt.Sprintf("/buckets/<BucketName>/objects/%s/uploads/%s/", base64.URLEncoding.EncodeToString([]byte(key)), uploadID)
+
+    var uploadedParts []UploadPartResponse
+
+    for partNumber := 1; fileSize > 0; partNumber++ {
+        // 计算单个分片的大小（最后一个分片可能小于 chunkSize）
+        partSize := int(min(fileSize, int64(chunkSize)))
+        fileSize -= int64(partSize)
+
+        // 读取分片大小的字节
+        partBuffer := make([]byte, partSize)
+        _, err := file.Read(partBuffer)
+        if err != nil {
+            return "", err
+        }
+
+        // 计算 MD5
+        md5Hash := md5.Sum(partBuffer)
+        md5Base64 := base64.StdEncoding.EncodeToString(md5Hash[:])
+
+        // 创建一个请求并设置必要的头
+        req, err := http.NewRequest("PUT", upHost+partURL+strconv.Itoa(partNumber), bytes.NewReader(partBuffer))
+        if err != nil {
+            return "", err
+        }
+        req.Header.Set("Authorization", "UpToken "+uploadToken)
+        req.Header.Set("Content-Type", "application/octet-stream")
+        req.Header.Set("Content-MD5", md5Base64)
+        req.Header.Set("Content-Length", strconv.Itoa(partSize))
+
+        // 发送请求
+        client := &http.Client{}
+        resp, err := client.Do(req)
+        if err != nil {
+            return "", err
+        }
+        defer resp.Body.Close()
+
+        // 检查 HTTP 响应
+        if resp.StatusCode != http.StatusOK {
+            return "", fmt.Errorf("bad status: %s", resp.Status)
+        }
+
+        // 解析响应数据
+        var partResp UploadPartResponse
+        if err := json.NewDecoder(resp.Body).Decode(&partResp); err != nil {
+            return "", err
+        }
+        uploadedParts = append(uploadedParts, partResp)
+    }
+
+    // 合并分片
+    completeURL := fmt.Sprintf("%s%s", upHost, partURL)
+    completeData := map[string]interface{}{
+        "parts":   uploadedParts,
+        "fname":   fileInfo.Name(),
+        "mimeType": "application/octet-stream",
+        // 此处添加其他metadata和自定义变量
+    }
+    completeBuffer := &bytes.Buffer{}
+    json.NewEncoder(completeBuffer).Encode(completeData)
+    req, err := http.NewRequest("POST", completeURL, completeBuffer)
+    if err != nil {
+        return "", err
+    }
+    req.Header.Set("Authorization", "UpToken "+uploadToken)
+    req.Header.Set("Content-Type", "application/json")
+
+    // 发送合并分片的请求
+    client := &http.Client{}
+    resp, err = client.Do(req)
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
+
+    // 检查 HTTP 响应
+    if resp.StatusCode != http.StatusOK {
+        return "", fmt.Errorf("bad status: %s", resp.Status)
+    }
+
+    // 返回最终上传响应的ETag（可以是其他有用的响应）
+    var finalResponse map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&finalResponse); err != nil {
+        return "", err
+    }
+
+    etag, ok := finalResponse["etag"].(string)
+    if !ok {
+        return "", fmt.Errorf("cannot get the final ETag")
+    }
+
+    return etag, nil
 }
 
-func completeMultipartUpload(accessKey, secretKey, bucket, key, uploadID string, etags []string) error {
-	url := fmt.Sprintf("%s/v2/multipart/upload/%s/complete", uploadURL, uploadID)
-
-	type part struct {
-		PartNumber int    `json:"partNumber"`
-		Etag       string `json:"etag"`
+func min(a, b int64) int64 {
+    if a < b {
+        return a
 	}
-
-	parts := make([]part, len(etags))
-	for i, etag := range etags {
-		parts[i] = part{
-			PartNumber: i + 1,
-			Etag:       etag,
-		}
-	}
-
-	type completeRequest struct {
-		Parts []part `json:"parts"`
-	}
-
-	reqData := completeRequest{
-		Parts: parts,
-	}
-
-	req, err := http.NewRequest("POST", url, encodeJSON(reqData))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Qiniu "+signRequest(accessKey, secretKey, req))
-
-	client := &http.Client{}
-	resp, err :=client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to complete multipart upload: %s", resp.Status)
-	}
-
-	return nil
+	return b
 }
-
-func signRequest(accessKey, secretKey string, req *http.Request) string {
-	signature := req.Method + " " + req.URL.Path + "\n"
-
-	if req.URL.RawQuery != "" {
-		signature += "?" + req.URL.RawQuery + "\n"
-	}
-
-	signature += fmt.Sprintf("Host: %s", req.Host)
-
-	hmac := hmacSha1([]byte(secretKey), []byte(signature))
-	sign := base64.URLEncoding.EncodeToString(hmac)
-
-	return accessKey + ":" + sign
-}
-
-func hmacSha1(key, data []byte) []byte {
-	//h := hmac.New(md5.New, key)
-	h.Write(data)
-	return h.Sum(nil)
-}
-
-func encodeJSON(data interface{}) io.Reader {
-	//b, _ := json.Marshal(data)
-	return bytes.NewReader(b)
-}
-
-func decodeJSON(r io.Reader, v interface{}) error {
-//	return json.NewDecoder(r).Decode(v)
-}*/
