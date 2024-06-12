@@ -11,7 +11,7 @@ import (
 
 // 上传文件
 func UploadFileFormData(uploadToken string, filePath string, key string) (string, error) {
-	url := "https://upload.qiniup.com"
+	url := "http://kodo-dev.up.jfcs-k8s-qa2.qiniu.io"
 	fileData, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return "", err

@@ -18,7 +18,8 @@ type ObjectInfo struct {
 // 获取对象的MIME类型
 func GetMimeType(user conf.AccessInfo, bucket, fileName string) {
     encodedEntry := base64.URLEncoding.EncodeToString([]byte(bucket + ":" + fileName))
-    uri := "http://rs.qiniu.com/stat/" + encodedEntry
+    //uri := "http://rs.qiniu.com/stat/" + encodedEntry
+	uri := "http://kodo-dev.rspub.jfcs-k8s-qa2.qiniu.io/stat/" + encodedEntry
 
     authorization := "QBox " + conf.SignQboxToken(user, uri, "")
 

@@ -25,7 +25,7 @@ type UploadPartResponse struct {
 // V2分片上传
 func UploadFileSliceV2(uploadToken, filePath, key string) (string, error) {
     // 分片大小
-    chunkSize := 5 * 1024 * 1024
+    chunkSize := 2 * 1024 * 1024
 
     // 打开文件
     file, err := os.Open(filePath)
@@ -42,8 +42,9 @@ func UploadFileSliceV2(uploadToken, filePath, key string) (string, error) {
     fileSize := fileInfo.Size()
 
     // 初始化 multipart 上传
-    initURL := fmt.Sprintf("/buckets/zjf-db1/objects/%s/uploads", base64.URLEncoding.EncodeToString([]byte(key)))
-    upHost := "upload.qiniup.com"
+    upHost := "http://kodo-dev.up.jfcs-k8s-qa2.qiniu.io"
+    initURL := fmt.Sprintf("%s/buckets/test-avif/objects/%s/uploads", upHost, base64.URLEncoding.EncodeToString([]byte(key)))
+    
     resp, err := http.Post(initURL, "application/json", nil)
     if err != nil {
         return "", err
@@ -56,7 +57,7 @@ func UploadFileSliceV2(uploadToken, filePath, key string) (string, error) {
     uploadID := initResp.UploadID
 
     // 分片上传
-    partURL := fmt.Sprintf("/buckets/zjf-db1/objects/%s/uploads/%s/", base64.URLEncoding.EncodeToString([]byte(key)), uploadID)
+    partURL := fmt.Sprintf("/buckets/test-avif/objects/%s/uploads/%s/", base64.URLEncoding.EncodeToString([]byte(key)), uploadID)
 
     var uploadedParts []UploadPartResponse
 
