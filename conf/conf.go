@@ -33,8 +33,8 @@ var(
 	User1 = AccessInfo{
 		Key:      "",
 		Secret:   "",
-		//Key:      "_k6nwy23UG9PHBabmkfVn47wROJNry-cRx-pelKr",
-		//Secret:	  "Bb3665vtPrCYh7NvA7aPYyGbdYfsXZAkJ6oyNgMz",
+		//Key:      "",
+		//Secret:	  "",
 		UserName: "general_storage_001@test.qiniu.io",
 		Password: "Test@123456",
 		Uid:      1380469261,
