@@ -31,8 +31,8 @@ var(
 //	Authorization = SignQboxToken(User1, "http://rs.qiniu.com/buckets", "")
 
 	User1 = AccessInfo{
-		Key:      "4u26TrA3ZdoHwqjX21uXpfgO638K3w7xJ2o5pllE",
-		Secret:   "zc3tcNlN4ErDfiU3Aqh9B4z2ndHD95QCXDVFiS8J",
+		Key:      "",
+		Secret:   "",
 		//Key:      "_k6nwy23UG9PHBabmkfVn47wROJNry-cRx-pelKr",
 		//Secret:	  "Bb3665vtPrCYh7NvA7aPYyGbdYfsXZAkJ6oyNgMz",
 		UserName: "general_storage_001@test.qiniu.io",
