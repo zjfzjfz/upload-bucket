@@ -8,6 +8,8 @@ import (
 	"upload-bucket/manage"
 )
 
+//
+
 func main() {
 	// 创建bucket
     manage.CreateBucket(conf.User1, conf.Bucket)
